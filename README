@@ -1,0 +1,53 @@
+Minimizing Javascript files in Phonegap.
+
+I've created a couple of additions to PhoneGap to support Javascript minimization.  This can produce noticeable performance improvement.  
+
+The process that the scripts go through is roughly:
+
+- Using a Makefile, extract the names of all the javascript files from index.html and generate a new "IndexHTMLMakefile" Makefile that has all the javascript files and exclusions
+- Using the new IndexHTMLMakefile, build the minified javascript files.  All the javascript files are catted together with a ; at the end then minified.
+- later in the build process, after the copy Bundle Resources Phase that copies the www folder, run a script that updates the www directory to minified javascript.
+    - this script removes all the extra javascript files and changes one javascript include - I use "startup.js" - to reference the new minified.js file.
+
+One particularly tricky aspect of the process is determining which files cannot be part of the minification process.  So far I've found that phonegap, jquery, and iscroll cannot be "minified" because they are already minified.  The pattern matching that is used is very exact on these filenames.  The excludedJSFiles.txt uses just the filenames, ie jquery-1.4.2.min.js.  The genmakefile.pl uses relative directories, ie js/common/contrib/jquery-1.4.2.min.js.  It would be nice to have these all in one place but I think that would mean a makefile to generate the genmakefile.pl - which is just one level too deep for my brain - or more complicated pattern matching in the perl script f
+
+This process requires the following components:
+1. a Makefile in the www directory.
+2. a perl script to generate a new makefile called genmakefile.pl in the www directory.
+3. a list of files to exclude from the removal step in the js directory.  I use excludedJSFiles.txt
+4. a new Target in the XCode project that generates the minified js file.  I use MinimizeJavascript.
+5. addition of the MinimizeJavascript target to the XCode target
+6. addition of the update www to minified javascript script to the XCode target AFTER the copy Bundle Resources.
+7. YUI's compressor.
+
+Optionally but very usefully with git:
+1. a .gitignore file in the www directory that contains the generated IndexHTMLMakefile
+2. a .gitignore file in the www/js directory that contains the generate concatenated and minified javascript such as $PROJECT_NAME.js and $PROJECT_NAME-min.js
+
+Detailed steps.
+
+1. In XCode, right-click on the Target's item in the Groups and Files pane. 
+2. Select new Target
+3. Select Other/External Target as the template.
+4. Enter the name.  I chose MinimizeJavascript.
+5. Select Done.
+6. You should now see the new Target listed.  
+7. Double-click on the new Target in the Targets list.
+8. Set the directory to $(SRCROOT)/www.  Now we need to add this target to your application.
+9. Left-click on the new Target and drag it to your project, just after the PhoneGapLib phase.
+10. You should now see the MinimizeJavascript target as part of your project.  Now the script needs to be added.
+11. Right click the Compile Bundle Resources phase and select Add/New Build Phase/New Run Script Build Phase.
+12. This should create a Run Script phase after the Copy Bundle Resources phase and pop up a Run Script Phase Info dialog box.  In the Script section, enter
+  rm -f `find "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/www/js" -name '*.js' |  grep -v -f "${PROJECT_DIR}/www/js/excludedJSFiles.txt"`
+  perl -p -i -e "s/startup\.js/$PROJECT_NAME-min\.js/" "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/www/index.html"
+
+You'll note that I used startup.js, so you should use a javascript file that is probably the last js file to be loaded in your index.html.
+13. Add YUI Compressor to your project.  I chose a util directory as a sibling of the phonegap project
+14. Copy or Add the Makefile and the genmakefile.pl to your www directory.
+15. Update the genmakefile.pl script to:
+15a. reference the YUI Compressor if you've used a different directory
+15b. list any files that need to be excluded from the minimization process in the two pattern match steps.
+16. Update the excludedJSFiles.txt to list the excluded files.  This must include the minified javascript file.
+17. Optionally copy and rename the www.gitignore file to .gitignore in your www directory
+18. Optionally copy and rename the js.gitignore file to .gitignore in your www/js directory
+19. Optionally update the www/js/.gitignore file to contain the JS files that are your project name specific.
